@@ -1,0 +1,8 @@
+------WebKitFormBoundaryABC123
+Content-Disposition: form-data; name="file"; filename="abcd.txt"
+Content-Type: text/plain
+
+This is the content of the file.
+It can be multiple lines.
+End of file content.
+------WebKitFormBoundaryABC123--
