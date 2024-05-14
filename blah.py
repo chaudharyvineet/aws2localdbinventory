@@ -85,3 +85,12 @@ def complete_multipart_upload(event, bucket_name, file_key):
         'statusCode': 200,
         'body': json.dumps(response)
     }
+
+
+
+
+
+################
+curl -X POST https://api.com/your-bucketname/example.txt?action=uploadPart \
+    -H "Content-Type: application/json" \
+    -d '{"upload_id": "your-upload-id", "part_number": 1, "part_data": "base64-encoded-data"}'
