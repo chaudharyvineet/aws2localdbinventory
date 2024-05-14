@@ -94,3 +94,11 @@ def complete_multipart_upload(event, bucket_name, file_key):
 curl -X POST https://api.com/your-bucketname/example.txt?action=uploadPart \
     -H "Content-Type: application/json" \
     -d '{"upload_id": "your-upload-id", "part_number": 1, "part_data": "base64-encoded-data"}'
+
+
+curl -X POST https://api.com/your-bucketname/example.txt \
+    -H "Content-Type: multipart/form-data" \
+    -F "action=complete" \
+    -F "upload_id=your-upload-id" \
+    -F "parts=[{\"ETag\":\"etag1\",\"PartNumber\":1},{\"ETag\":\"etag2\",\"PartNumber\":2}]"
+
