@@ -176,7 +176,6 @@ def lambda_handler(event, context):
 
 
 
----------
-curl -X POST https://your-api-id.execute-api.your-region.amazonaws.com/prod/upload \
+curl -X POST https://your-api-id.execute-api.your-region.amazonaws.com/upload \
      -H "Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryABC123" \
-     -F "file=@example.txt"
+     --data-binary @multipart-data.txt
