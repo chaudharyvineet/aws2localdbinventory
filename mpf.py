@@ -173,3 +173,10 @@ def lambda_handler(event, context):
             'body': json.dumps({'message': str(e)})
         }
 
+
+
+
+---------
+curl -X POST https://your-api-id.execute-api.your-region.amazonaws.com/prod/upload \
+     -H "Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryABC123" \
+     -F "file=@example.txt"
