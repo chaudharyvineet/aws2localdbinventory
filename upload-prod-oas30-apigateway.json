@@ -1,0 +1,42 @@
+{
+  "openapi" : "3.0.1",
+  "info" : {
+    "title" : "upload",
+    "version" : "2024-05-14T15:17:54Z"
+  },
+  "servers" : [ {
+    "url" : "<add-invoke-url-here>/{basePath}",
+    "variables" : {
+      "basePath" : {
+        "default" : "prod"
+      }
+    }
+  } ],
+  "paths" : {
+    "/{bucket+}" : {
+      "x-amazon-apigateway-any-method" : {
+        "parameters" : [ {
+          "name" : "bucket",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "httpMethod" : "POST",
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:<acc_id>:function:<lambdaname>/invocations",
+          "responses" : {
+            "default" : {
+              "statusCode" : "200"
+            }
+          },
+          "passthroughBehavior" : "when_no_match",
+          "contentHandling" : "CONVERT_TO_TEXT",
+          "type" : "aws_proxy"
+        }
+      }
+    }
+  },
+  "components" : { }
+}
