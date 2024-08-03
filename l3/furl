@@ -1,0 +1,31 @@
+import sys
+import boto3
+from botocore.auth import SigV4Auth
+from botocore.awsrequest import AWSRequest
+import requests
+
+def sign_request(url, method, region, service, headers, body):
+    session = boto3.session.Session()
+    credentials = session.get_credentials().get_frozen_credentials()
+    request = AWSRequest(method=method, url=url, headers=headers, data=body)
+    SigV4Auth(credentials, service, region).add_auth(request)
+    return request
+
+url = "https://your-function-url"
+method = "GET"
+region = "your-region"
+service = "lambda"
+headers = {"Content-Type": "application/json"}
+body = None
+
+signed_request = sign_request(url, method, region, service, headers, body)
+
+response = requests.request(
+    method=signed_request.method,
+    url=signed_request.url,
+    headers=dict(signed_request.headers),
+    data=signed_request.body
+)
+
+print(response.status_code)
+print(response.text)
