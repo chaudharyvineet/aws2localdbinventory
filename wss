@@ -1,0 +1,133 @@
+{
+  "openapi" : "3.0.1",
+  "info" : {
+    "title" : "custom",
+    "version" : "2024-08-06T23:28:27Z"
+  },
+  "servers" : [ {
+    "url" : "https://vermithor.deanerystargeryan.uk/{basePath}",
+    "variables" : {
+      "basePath" : {
+        "default" : "kurt"
+      }
+    }
+  } ],
+  "paths" : {
+    "/upload" : {
+      "post" : {
+        "responses" : {
+          "200" : {
+            "description" : "200 response",
+            "content" : {
+              "text/html" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Empty"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/" : {
+      "x-amazon-apigateway-any-method" : {
+        "responses" : {
+          "200" : {
+            "description" : "200 response",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Empty"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "Empty" : {
+        "title" : "Empty Schema",
+        "type" : "object"
+      }
+    }
+  }
+}
+
+
+
+______________________________________________________________-^-________________________
+import base64
+import logging
+
+# Set up logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+def lambda_handler(event, context):
+    # Log the incoming event for debugging
+    logger.info("Received event: %s", event)
+    
+    # Initialize the response
+    response = {
+        'statusCode': 400,
+        'body': 'Invalid request'
+    }
+
+    # Check if the body is present
+    if 'body' not in event or event['body'] is None:
+        logger.error("Request body is missing")
+        return response
+    
+    # Extract the body and check if it's base64 encoded
+    is_base64_encoded = event.get('isBase64Encoded', False)
+    body = event['body']
+    
+    if is_base64_encoded:
+        try:
+            # Decode the base64-encoded string
+            body = base64.b64decode(body)
+        except Exception as e:
+            logger.error("Failed to decode base64 body: %s", str(e))
+            response['body'] = 'Failed to decode base64 body'
+            return response
+    
+    # If the body is not base64 encoded, ensure it is converted to bytes
+    if isinstance(body, str):
+        body = body.encode('utf-8')
+    
+    # Process the binary data
+    try:
+        file_size = len(body)
+        base64_image = base64.b64encode(body).decode('utf-8')
+        
+        # Create the HTML content with the image embedded as base64
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Image</title>
+        </head>
+        <body>
+            <h1>Uploaded Image</h1>
+            <p>File Size: {file_size} bytes</p>
+            <img src="data:image/png;charset=utf-8;base64,{base64_image}" alt="Uploaded Image" />
+        </body>
+        </html>
+        """
+        
+        # Return the HTML response
+        response = {
+            'statusCode': 200,
+            'headers': {
+                'Content-Type': 'text/html'
+            },
+            'body': html_content
+        }
+    except Exception as e:
+        logger.error("Error processing body: %s", str(e))
+        response['body'] = 'Error processing body'
+    
+    return response
