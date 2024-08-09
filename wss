@@ -2,7 +2,7 @@
   "openapi" : "3.0.1",
   "info" : {
     "title" : "custom",
-    "version" : "2024-08-06T23:28:27Z"
+    "version" : "2024-08-09T18:00:03Z"
   },
   "servers" : [ {
     "url" : "https://vermithor.deanerystargeryan.uk/{basePath}",
@@ -26,6 +26,18 @@
               }
             }
           }
+        },
+        "x-amazon-apigateway-integration" : {
+          "type" : "aws_proxy",
+          "httpMethod" : "POST",
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:646831198021:function:custom/invocations",
+          "responses" : {
+            "default" : {
+              "statusCode" : "200"
+            }
+          },
+          "passthroughBehavior" : "when_no_match",
+          "contentHandling" : "CONVERT_TO_TEXT"
         }
       }
     },
@@ -42,6 +54,18 @@
               }
             }
           }
+        },
+        "x-amazon-apigateway-integration" : {
+          "type" : "aws_proxy",
+          "httpMethod" : "POST",
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:646831198021:function:custom/invocations",
+          "responses" : {
+            "default" : {
+              "statusCode" : "200"
+            }
+          },
+          "passthroughBehavior" : "when_no_match",
+          "contentHandling" : "CONVERT_TO_TEXT"
         }
       }
     }
@@ -53,9 +77,9 @@
         "type" : "object"
       }
     }
-  }
+  },
+  "x-amazon-apigateway-binary-media-types" : [ "*/*" ]
 }
-
 
 
 ______________________________________________________________-^-________________________
