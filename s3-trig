@@ -1,0 +1,54 @@
+import json
+import boto3
+import os
+
+# Initialize SQS client
+sqs_client = boto3.client('sqs')
+
+# Get the DLQ URL from environment variables (set this in the Lambda configuration)
+DLQ_URL = os.environ['DLQ_URL']
+
+def lambda_handler(event, context):
+    try:
+        # Get the bucket name and object key from the event
+        bucket_name = event['Records'][0]['s3']['bucket']['name']
+        object_key = event['Records'][0]['s3']['object']['key']
+        
+        # Process the file (this is where your logic would go)
+        # For example, let's just log the file details
+        print(f"New file uploaded: {bucket_name}/{object_key}")
+        
+        # Simulate file processing success
+        process_success = True
+        
+        # If processing was successful, send a success message to the DLQ
+        if process_success:
+            message = {
+                'status': 'success',
+                'bucket_name': bucket_name,
+                'object_key': object_key
+            }
+            send_message_to_dlq(message)
+        
+    except Exception as e:
+        # If there's an error, send a failure message to the DLQ
+        error_message = {
+            'status': 'error',
+            'error': str(e),
+            'bucket_name': bucket_name,
+            'object_key': object_key
+        }
+        send_message_to_dlq(error_message)
+        raise e  # Re-raise the exception after logging it to DLQ
+
+def send_message_to_dlq(message):
+    try:
+        # Send the message to the DLQ
+        response = sqs_client.send_message(
+            QueueUrl=DLQ_URL,
+            MessageBody=json.dumps(message)
+        )
+        print(f"Message sent to DLQ: {response['MessageId']}")
+    except Exception as e:
+        print(f"Failed to send message to DLQ: {str(e)}")
+        raise e
