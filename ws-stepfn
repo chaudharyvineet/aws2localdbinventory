@@ -1,0 +1,36 @@
+import json
+import logging
+import os
+import boto3
+from botocore.exceptions import ClientError
+
+logger = logging.getLogger()
+logger.setLevel("INFO")
+
+          
+
+def lambda_handler(event, context):
+    print(json.dumps(event))
+    endpoint_url = "https://" + "/".join([event['domain'], event['stage']])
+        
+    apigateway_client = boto3.client('apigatewaymanagementapi', endpoint_url=endpoint_url)
+    try:
+        connection_id = "cQs_DevHIAMCLWQ="
+        send_message(apigateway_client, connection_id, event['message'])
+    except Exception as e:
+        logger.error("Failed to send message: %s", str(e))
+    return {
+        'statusCode': 200
+    }
+
+    
+def send_message(apigateway_client, connection_id, message):
+    try:
+        response = apigateway_client.post_to_connection(
+            ConnectionId=connection_id,
+            Data=message.encode('utf-8')
+        )
+        logger.info("Message successfully sent: %s", response)
+    except ClientError as err:
+        logger.error("couldnt send message: %s", str(e))
+    raise
