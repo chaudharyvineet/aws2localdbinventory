@@ -34,3 +34,15 @@ def send_message(apigateway_client, connection_id, message):
     except ClientError as err:
         logger.error("couldnt send message: %s", str(e))
     raise
+
+
+
+
+
+
+
+{
+    "domain": "api.execute-api.us-east-1.amazonaws.com",
+    "stage": "dev",
+    "message": "hello, from Step Functions!"
+}
