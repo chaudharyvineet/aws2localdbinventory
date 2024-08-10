@@ -1,0 +1,29 @@
+import os
+import json
+import pymysql
+# RDS settings
+rds_host  = ""                       #os.environ['RDS_HOST']
+username = ""                  #os.environ['DB_USERNAME']
+password = ""   #os.environ['DB_PASSWORD']
+db_name =  ""                         #os.environ['DB_NAME']
+import pymysql
+# Establishing a connection to the RDS instance
+def lambda_handler(event, context):
+    try:
+        connection = pymysql.connect(host=rds_host, user=username, passwd=password, db=db_name, connect_timeout=5)
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM your_table_name")
+            result = cursor.fetchall()
+            print(result)
+        connection.close()
+    except pymysql.MySQLError as e:
+        print(f"Error connecting to MySQL Platform: {e}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps('Error connecting to database')
+        }
+    
+    return {
+        'statusCode': 200,
+        'body': json.dumps('Data retrieved successfully')
+    }
