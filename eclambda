@@ -1,0 +1,28 @@
+import json
+import requests
+
+def lambda_handler(event, context):
+    # Replace with your EC2 instance's public DNS or IP
+    ec2_url = "http://<your-ec2-public-dns-or-ip>"
+    
+    try:
+        # Send HTTP GET request to EC2 instance on port 80
+        response = requests.get(ec2_url)
+        
+        # Print the response from EC2
+        print("Response Status Code:", response.status_code)
+        print("Response Text:", response.text)
+        
+        # Return the response
+        return {
+            'statusCode': response.status_code,
+            'body': response.text
+        }
+        
+    except requests.exceptions.RequestException as e:
+        # Handle any errors that occur during the request
+        print("Error occurred:", str(e))
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': str(e)})
+        }
