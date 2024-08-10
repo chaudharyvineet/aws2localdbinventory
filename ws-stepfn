@@ -17,7 +17,7 @@ def lambda_handler(event, context):
     try:
         send_message(apigateway_client, event['connectionId'], event['message'])
     except Exception as e:
-        logger.error("Failed to send message: %s", str(e))
+        logger.error(f"Failed to send message: {str(e)}")
     return {
         'statusCode': 200
     }
