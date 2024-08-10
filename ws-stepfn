@@ -15,8 +15,7 @@ def lambda_handler(event, context):
         
     apigateway_client = boto3.client('apigatewaymanagementapi', endpoint_url=endpoint_url)
     try:
-        connection_id = "cQs_DevHIAMCLWQ="
-        send_message(apigateway_client, connection_id, event['message'])
+        send_message(apigateway_client, event['connectionId'], event['message'])
     except Exception as e:
         logger.error("Failed to send message: %s", str(e))
     return {
@@ -34,8 +33,6 @@ def send_message(apigateway_client, connection_id, message):
     except ClientError as err:
         logger.error("couldnt send message: %s", str(e))
     raise
-
-
 
 
 
