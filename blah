@@ -1,0 +1,73 @@
+#!/bin/bash
+
+# Define variables
+IMAGE_NAME="my_docker_image"
+CONTAINER_NAME="my_container_$BUILD_ID"  # Use BUILD_ID or BUILD_NUMBER for a unique container name
+HOST_VOLUME_PATH="/path/to/host/directory"
+CONTAINER_VOLUME_PATH="/path/in/container"
+SCRIPT_PATH="/path/in/container/script.sh"
+
+# Run Docker container with volume mount and execute the script
+docker run --name $CONTAINER_NAME -v $HOST_VOLUME_PATH:$CONTAINER_VOLUME_PATH $IMAGE_NAME /bin/bash -c "sh $SCRIPT_PATH"
+
+# Capture the exit code
+EXIT_CODE=$?
+
+# Output the logs (optional)
+echo "Docker container logs:"
+docker logs $CONTAINER_NAME
+
+# Cleanup the container
+docker rm -f $CONTAINER_NAME
+
+# Exit with the same code as the script inside the container
+exit $EXIT_CODE
+
+
+
+
+dsjfbvdjkbjlSdjvbfdh
+#!/bin/bash
+
+# Export environment variables
+export VAR1="value1"
+export VAR2="value2"
+export VAR3="value3"
+
+# Print the exported variables (optional, for debugging purposes)
+echo "Exported Variables:"
+echo "VAR1=${VAR1}"
+echo "VAR2=${VAR2}"
+echo "VAR3=${VAR3}"
+
+# Run Python scripts one by one
+echo "Running Python script 1..."
+python3 /path/to/your/first_script.py
+
+echo "Running Python script 2..."
+python3 /path/to/your/second_script.py
+
+echo "Running Python script 3..."
+python3 /path/to/your/third_script.py
+
+echo "Running Python script 4..."
+python3 /path/to/your/fourth_script.py
+
+# Check if Python scripts ran successfully
+if [ $? -ne 0 ]; then
+  echo "One or more Python scripts failed. Exiting."
+  exit 1
+fi
+
+# Upload a folder to S3
+# Make sure AWS CLI is configured with appropriate credentials
+echo "Uploading folder to S3..."
+aws s3 cp /path/to/your/local/folder s3://your-bucket-name/remote/folder --recursive
+
+# Check if S3 upload was successful
+if [ $? -ne 0 ]; then
+  echo "Failed to upload to S3. Exiting."
+  exit 1
+fi
+
+echo "Process completed successfully."
