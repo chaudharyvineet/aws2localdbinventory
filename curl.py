@@ -38,3 +38,39 @@ def handler(event, context):
         })
     }
 
+
+
+
+
+shdhjahdbs
+
+
+
+import requests
+import json
+
+# API Gateway URL
+api_url = 'https://api.com/your-endpoint'  # Replace with your API Gateway URL
+
+# Headers including Content-Type and API Key if required
+headers = {
+    'Content-Type': 'application/json',
+    'x-api-key': 'your-api-key'  # Replace with your actual API key if required
+}
+
+# Payload to send in the body of the POST request
+payload = {
+    'name': 'my-instance',
+    'instance_type': 't2.micro'
+}
+
+# Send POST request
+response = requests.post(api_url, headers=headers, data=json.dumps(payload))
+
+# Check response
+if response.status_code == 200:
+    print('Request was successful!')
+    print('Response:', response.json())
+else:
+    print('Request failed with status code:', response.status_code)
+    print('Response:', response.text)
