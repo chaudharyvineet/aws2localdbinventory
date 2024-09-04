@@ -1,0 +1,119 @@
+import boto3
+import json
+import random
+
+# Hardcoded values
+AMI_ID = 'ami-xxxxxxxx'            # Replace with your AMI ID
+INSTANCE_TYPE = 't2.micro'         # Default instance type
+SECURITY_GROUP_ID = 'sg-xxxxxxxx'  # Replace with your Security Group ID
+IAM_ROLE = 'your-iam-role'         # Replace with your IAM role name
+VPC_ID = 'vpc-xxxxxxxx'            # Replace with your VPC ID
+KEY_NAME = 'your-key-pair-name'    # Replace with your Key Pair Name
+
+ec2_client = boto3.client('ec2')
+
+def lambda_handler(event, context):
+    try:
+        # Parsing request body
+        body = json.loads(event['body'])
+        
+        if event['resource'] == '/createec2':
+            # Part 1: Create the Spot Instance request
+            instance_name = body.get('name')
+            instance_type = body.get('instance_type', INSTANCE_TYPE)
+
+            # Retrieve all subnets in the VPC
+            subnets = ec2_client.describe_subnets(Filters=[{'Name': 'vpc-id', 'Values': [VPC_ID]}])['Subnets']
+            if not subnets:
+                return {'statusCode': 500, 'body': json.dumps({'error': 'No subnets available in the VPC'})}
+            
+            # Select a random subnet
+            subnet_id = random.choice(subnets)['SubnetId']
+
+            # Create the Spot Instance request
+            spot_response = ec2_client.request_spot_instances(
+                InstanceCount=1,
+                Type='one-time',
+                LaunchSpecification={
+                    'ImageId': AMI_ID,
+                    'InstanceType': instance_type,
+                    'KeyName': KEY_NAME,
+                    'SecurityGroupIds': [SECURITY_GROUP_ID],
+                    'IamInstanceProfile': {'Name': IAM_ROLE},
+                    'SubnetId': subnet_id,
+                }
+            )
+
+            spot_request_id = spot_response['SpotInstanceRequests'][0]['SpotInstanceRequestId']
+
+            # Return the Spot Instance Request ID for tracking
+            return {
+                'statusCode': 202,
+                'body': json.dumps({'RequestId': spot_request_id, 'Status': 'pending'})
+            }
+
+        elif event['resource'] == '/checkstatus':
+            # Part 2: Check the Spot Instance request status
+            request_id = body['request_id']
+            
+            # Poll AWS to get the latest status
+            spot_result = ec2_client.describe_spot_instance_requests(SpotInstanceRequestIds=[request_id])
+            spot_request = spot_result['SpotInstanceRequests'][0]
+
+            if 'InstanceId' in spot_request:
+                instance_id = spot_request['InstanceId']
+
+                # Check the instance status
+                instance_details = ec2_client.describe_instances(InstanceIds=[instance_id])
+                instance = instance_details['Reservations'][0]['Instances'][0]
+                instance_state = instance['State']['Name']
+                public_ip = instance.get('PublicIpAddress', 'No public IP')
+
+                return {
+                    'statusCode': 200,
+                    'body': json.dumps({
+                        'RequestId': request_id,
+                        'Status': instance_state,
+                        'InstanceId': instance_id,
+                        'PublicIpAddress': public_ip
+                    })
+                }
+            else:
+                return {
+                    'statusCode': 200,
+                    'body': json.dumps({'RequestId': request_id, 'Status': 'pending'})
+                }
+
+        elif event['resource'] == '/deleteec2':
+            # Part 3: Delete the EC2 Instance
+            request_id = body.get('request_id', None)
+            instance_id = body.get('instance_id', None)
+            
+            if request_id:
+                # Get the instance ID from the spot request
+                spot_result = ec2_client.describe_spot_instance_requests(SpotInstanceRequestIds=[request_id])
+                spot_request = spot_result['SpotInstanceRequests'][0]
+                instance_id = spot_request.get('InstanceId', None)
+            
+            if instance_id:
+                # Terminate the instance
+                ec2_client.terminate_instances(InstanceIds=[instance_id])
+
+                # Wait until the instance is terminated
+                ec2_client.get_waiter('instance_terminated').wait(InstanceIds=[instance_id])
+
+                return {
+                    'statusCode': 200,
+                    'body': json.dumps({'InstanceId': instance_id, 'Status': 'terminated'})
+                }
+            else:
+                return {
+                    'statusCode': 400,
+                    'body': json.dumps({'error': 'Instance ID not found for the provided request ID'})
+                }
+
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': str(e)})
+        }
