@@ -1,43 +1,3 @@
-#!/bin/bash
-
-# Fetch the public IP address of the EC2 instance
-PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
-# Fetch the private IP address if needed
-# PRIVATE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
-
-# Path to the Jenkins config.xml file
-JENKINS_CONFIG="/var/lib/jenkins/config.xml"
-
-# Ensure Jenkins config file exists
-if [ ! -f "$JENKINS_CONFIG" ]; then
-  echo "Jenkins config file not found at $JENKINS_CONFIG"
-  exit 1
-fi
-
-# Update the Jenkins URL in the config.xml file
-sed -i "s|<jenkinsUrl>.*</jenkinsUrl>|<jenkinsUrl>http://$PUBLIC_IP:8080/</jenkinsUrl>|" "$JENKINS_CONFIG"
-
-# Restart Jenkins to apply changes
-systemctl restart jenkins
-
-
-
-
-
-=======[Unit]
-Description=Update Jenkins URL on startup
-After=network.target
-
-[Service]
-ExecStart=/usr/local/bin/update-jenkins-url.sh
-Type=oneshot
-
-[Install]
-WantedBy=multi-user.target
-
-
-
-
 import requests
 import time
 from requests.auth import HTTPBasicAuth
@@ -83,7 +43,3 @@ def show_build_logs(build_number):
 
 def wait_for_build_to_complete(build_number):
     build_url = f
-
-
-
-
