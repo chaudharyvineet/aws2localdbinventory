@@ -17,19 +17,12 @@ def trigger_jenkins_build():
 
     if response.status_code == 201:
         print('Build triggered successfully.')
+        # Extract build number from the response headers
+        build_number = response.headers.get('Location').split('/')[-2]
+        print(f'Build number: {build_number}')
+        return build_number
     else:
         print(f'Failed to trigger build. Status code: {response.status_code}')
-        return None
-    
-    # Fetch the queue item to get the build number
-    queue_url = f'{JENKINS_URL}/job/{JOB_NAME}/lastBuild/api/json'
-    queue_response = requests.get(queue_url, auth=HTTPBasicAuth(JENKINS_USER, JENKINS_API_TOKEN))
-
-    if queue_response.status_code == 200:
-        queue_data = queue_response.json()
-        return queue_data['number']  # The build number
-    else:
-        print(f'Failed to get queue status. Status code: {queue_response.status_code}')
         return None
 
 def show_build_logs(build_number):
@@ -42,4 +35,38 @@ def show_build_logs(build_number):
         print(f'Error fetching build logs. Status code: {response.status_code}')
 
 def wait_for_build_to_complete(build_number):
-    build_url = f
+    build_url = f'{JENKINS_URL}/job/{JOB_NAME}/{build_number}/api/json'
+    
+    while True:
+        response = requests.get(build_url, auth=HTTPBasicAuth(JENKINS_USER, JENKINS_API_TOKEN))
+
+        if response.status_code == 200:
+            build_data = response.json()
+            
+            if build_data['building']:
+                print(f'Build {build_number} is still running...')
+                time.sleep(10)  # Wait before polling again
+            else:
+                # Build has completed
+                if build_data['result'] == 'SUCCESS':
+                    print(f'Build {build_number} completed successfully.')
+                else:
+                    print(f'Build {build_number} failed with result: {build_data["result"]}')
+                break
+        else:
+            print(f'Error checking build status. Status code: {response.status_code}')
+            break
+
+def main():
+    # Trigger Jenkins build
+    build_number = trigger_jenkins_build()
+
+    if build_number:
+        # Wait for the build to complete
+        wait_for_build_to_complete(build_number)
+        
+        # Show the build logs
+        show_build_logs(build_number)
+
+if __name__ == '__main__':
+    main()
