@@ -1,0 +1,89 @@
+#!/bin/bash
+
+# Fetch the public IP address of the EC2 instance
+PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+# Fetch the private IP address if needed
+# PRIVATE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
+
+# Path to the Jenkins config.xml file
+JENKINS_CONFIG="/var/lib/jenkins/config.xml"
+
+# Ensure Jenkins config file exists
+if [ ! -f "$JENKINS_CONFIG" ]; then
+  echo "Jenkins config file not found at $JENKINS_CONFIG"
+  exit 1
+fi
+
+# Update the Jenkins URL in the config.xml file
+sed -i "s|<jenkinsUrl>.*</jenkinsUrl>|<jenkinsUrl>http://$PUBLIC_IP:8080/</jenkinsUrl>|" "$JENKINS_CONFIG"
+
+# Restart Jenkins to apply changes
+systemctl restart jenkins
+
+
+
+
+
+=======[Unit]
+Description=Update Jenkins URL on startup
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/update-jenkins-url.sh
+Type=oneshot
+
+[Install]
+WantedBy=multi-user.target
+
+
+
+
+import requests
+import time
+from requests.auth import HTTPBasicAuth
+
+# Jenkins configuration
+JENKINS_URL = 'http://your-jenkins-url:8080'  # Replace with your Jenkins URL
+JENKINS_USER = 'your-jenkins-username'        # Replace with your Jenkins username
+JENKINS_API_TOKEN = 'your-jenkins-api-token'  # Replace with your Jenkins API token
+JOB_NAME = 'your-job-name'                    # Replace with your Jenkins job name
+
+def trigger_jenkins_build():
+    # URL to trigger the Jenkins job
+    trigger_url = f'{JENKINS_URL}/job/{JOB_NAME}/build/api/json'
+    
+    # Trigger the build
+    response = requests.post(trigger_url, auth=HTTPBasicAuth(JENKINS_USER, JENKINS_API_TOKEN))
+
+    if response.status_code == 201:
+        print('Build triggered successfully.')
+    else:
+        print(f'Failed to trigger build. Status code: {response.status_code}')
+        return None
+    
+    # Fetch the queue item to get the build number
+    queue_url = f'{JENKINS_URL}/job/{JOB_NAME}/lastBuild/api/json'
+    queue_response = requests.get(queue_url, auth=HTTPBasicAuth(JENKINS_USER, JENKINS_API_TOKEN))
+
+    if queue_response.status_code == 200:
+        queue_data = queue_response.json()
+        return queue_data['number']  # The build number
+    else:
+        print(f'Failed to get queue status. Status code: {queue_response.status_code}')
+        return None
+
+def show_build_logs(build_number):
+    console_url = f'{JENKINS_URL}/job/{JOB_NAME}/{build_number}/consoleText'
+    response = requests.get(console_url, auth=HTTPBasicAuth(JENKINS_USER, JENKINS_API_TOKEN))
+
+    if response.status_code == 200:
+        print(response.text)
+    else:
+        print(f'Error fetching build logs. Status code: {response.status_code}')
+
+def wait_for_build_to_complete(build_number):
+    build_url = f
+
+
+
+
