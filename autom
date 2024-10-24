@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# Fetch the public IP of the EC2 instance
+PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+
+# Jenkins credentials and details
+JENKINS_URL="http://old-ip-or-hostname:8080"  # Placeholder URL
+JENKINS_USER="your-username"
+JENKINS_API_TOKEN="your-api-token"  # Use API token for authentication
+JOB_NAME="your-job-name"
+
+# Replace the old IP/hostname in Jenkins job configuration with the new public IP
+JOB_CONFIG_XML=$(curl -s -u "$JENKINS_USER:$JENKINS_API_TOKEN" "$JENKINS_URL/job/$JOB_NAME/config.xml")
+UPDATED_CONFIG_XML=$(echo "$JOB_CONFIG_XML" | sed "s|$JENKINS_URL|http://$PUBLIC_IP:8080|g")
+
+# Push the updated configuration back to Jenkins
+curl -s -X POST -u "$JENKINS_USER:$JENKINS_API_TOKEN" --data-binary "$UPDATED_CONFIG_XML" -H "Content-Type: text/xml" "$JENKINS_URL/job/$JOB_NAME/config.xml"
+
+echo "Jenkins URL updated to http://$PUBLIC_IP:8080"
+
+
+ sudo chmod +x /usr/local/bin/update_jenkins_ip.sh
+sudo nano /etc/systemd/system/update-jenkins-ip.service
+[Unit]
+Description=Update Jenkins URL with Public IP at Boot
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/update_jenkins_ip.sh
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+
+sudo systemctl enable update-jenkins-ip.service
+
+sudo systemctl start update-jenkins-ip.service
+
