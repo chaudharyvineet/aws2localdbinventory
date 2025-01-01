@@ -32,3 +32,378 @@ def lambda_handler(event, context):
 
 
 
+#----------------------------------------------------------------------------------------#
+# import numpy as np
+# import pandas as pd
+# from sklearn.model_selection import train_test_split
+# from sklearn.svm import SVC, OneClassSVM
+# from sklearn.ensemble import RandomForestClassifier
+# from sklearn.neighbors import KNeighborsClassifier, LocalOutlierFactor
+# from sklearn.covariance import EllipticEnvelope
+# from sklearn.metrics import classification_report, accuracy_score
+# import argparse
+#
+# # Preprocessing function
+# def preprocess_data(file_paths):
+#     datasets = []
+#     for file in file_paths:
+#         df = pd.read_csv(file)
+#         df['packets'] = df['packets'].apply(lambda x: str(x).split())
+#         df = df.explode('packets')
+#         df[['packet_length', 'direction', 'attack_label']] = df['packets'].str.split(',', expand=True)
+#         df['packet_length'] = df['packet_length'].astype(float)
+#         df['direction'] = df['direction'].astype(int)
+#         df['attack_label'] = df['attack_label'].fillna('B').map({'B': 0, 'M': 1}).astype(int)
+#         df.drop(columns=['packets'], inplace=True)
+#         datasets.append(df)
+#     combined_data = pd.concat(datasets, ignore_index=True)
+#     X = combined_data[['packet_length', 'direction']]
+#     y = combined_data['attack_label']
+#     return X, y
+#
+# # Classifier training and evaluation functions
+# def one_class_svm(X_train, X_test):
+#     clf = OneClassSVM(gamma='auto').fit(X_train)
+#     y_pred = clf.predict(X_test)
+#     return y_pred
+#
+# def elliptic_envelope(X_train, X_test):
+#     clf = EllipticEnvelope().fit(X_train)
+#     y_pred = clf.predict(X_test)
+#     return y_pred
+#
+# def local_outlier_factor(X_train, X_test):
+#     clf = LocalOutlierFactor(novelty=True).fit(X_train)
+#     y_pred = clf.predict(X_test)
+#     return y_pred
+#
+# def svm_classifier(X_train, y_train, X_test):
+#     clf = SVC(probability=True).fit(X_train, y_train)
+#     y_pred = clf.predict(X_test)
+#     y_prob = clf.predict_proba(X_test)
+#     return y_pred, y_prob
+#
+# def random_forest_classifier(X_train, y_train, X_test):
+#     clf = RandomForestClassifier().fit(X_train, y_train)
+#     y_pred = clf.predict(X_test)
+#     y_prob = clf.predict_proba(X_test)
+#     return y_pred, y_prob
+#
+# def knn_classifier(X_train, y_train, X_test):
+#     clf = KNeighborsClassifier().fit(X_train, y_train)
+#     y_pred = clf.predict(X_test)
+#     y_prob = clf.predict_proba(X_test)
+#     return y_pred, y_prob
+#
+# # Ensemble methods
+# def ensemble_random(predictions):
+#     return [np.random.choice(pred) for pred in zip(*predictions)]
+#
+# def ensemble_highest_confidence(probs):
+#     return [np.argmax(max(prob, key=lambda p: max(p))) for prob in zip(*probs)]
+#
+# def ensemble_p1_p2_diff(probs):
+#     def diff(p):
+#         return np.max(p) - sorted(p)[-2]
+#     return [np.argmax(max(prob, key=diff)) for prob in zip(*probs)]
+#
+# def main():
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument('--train-files', nargs='+', required=True, help="Paths to training CSV files")
+#     parser.add_argument('--test-files', nargs='+', required=True, help="Paths to testing CSV files")
+#     parser.add_argument('--ensemble-method', choices=['random', 'highest_confidence', 'p1_p2_diff'], required=True, help="Ensemble method")
+#     args = parser.parse_args()
+#
+#     # Load and preprocess data
+#     X_train, y_train = preprocess_data(args.train_files)
+#     X_test, y_test = preprocess_data(args.test_files)
+#
+#     # Train and evaluate classifiers
+#     svm_pred, svm_prob = svm_classifier(X_train, y_train, X_test)
+#     rf_pred, rf_prob = random_forest_classifier(X_train, y_train, X_test)
+#     knn_pred, knn_prob = knn_classifier(X_train, y_train, X_test)
+#
+#     # Ensemble predictions
+#     if args.ensemble_method == 'random':
+#         final_pred = ensemble_random([svm_pred, rf_pred, knn_pred])
+#     elif args.ensemble_method == 'highest_confidence':
+#         final_pred = ensemble_highest_confidence([svm_prob, rf_prob, knn_prob])
+#     elif args.ensemble_method == 'p1_p2_diff':
+#         final_pred = ensemble_p1_p2_diff([svm_prob, rf_prob, knn_prob])
+#
+#     # Evaluate final predictions
+#     print("Classification Report:\n", classification_report(y_test, final_pred))
+#     print("Accuracy:", accuracy_score(y_test, final_pred))
+#
+# if __name__ == '__main__':
+#     main()
+
+
+
+
+
+
+
+
+# import numpy as np
+# import pandas as pd
+# from sklearn.model_selection import train_test_split
+# from sklearn.svm import SVC, OneClassSVM
+# from sklearn.ensemble import RandomForestClassifier
+# from sklearn.neighbors import KNeighborsClassifier, LocalOutlierFactor
+# from sklearn.covariance import EllipticEnvelope
+# from sklearn.metrics import classification_report, accuracy_score
+# import argparse
+#
+# # Preprocessing function for the new data format
+# def preprocess_data(file_paths):
+#     datasets = []
+#     for file in file_paths:
+#         df = pd.read_csv(file)
+#         # Assume the last column is the attack label for classification
+#         X = df.iloc[:, :-1]  # All columns except the last
+#         y = df.iloc[:, -1]   # Last column
+#         datasets.append((X, y))
+#     X_combined = pd.concat([d[0] for d in datasets], ignore_index=True)
+#     y_combined = pd.concat([d[1] for d in datasets], ignore_index=True)
+#     return X_combined, y_combined
+#
+# # Classifier training and evaluation functions
+# def one_class_svm(X_train, X_test):
+#     clf = OneClassSVM(gamma='auto').fit(X_train)
+#     y_pred = clf.predict(X_test)
+#     return y_pred
+#
+# def elliptic_envelope(X_train, X_test):
+#     clf = EllipticEnvelope().fit(X_train)
+#     y_pred = clf.predict(X_test)
+#     return y_pred
+#
+# def local_outlier_factor(X_train, X_test):
+#     clf = LocalOutlierFactor(novelty=True).fit(X_train)
+#     y_pred = clf.predict(X_test)
+#     return y_pred
+#
+# def svm_classifier(X_train, y_train, X_test):
+#     clf = SVC(probability=True).fit(X_train, y_train)
+#     y_pred = clf.predict(X_test)
+#     y_prob = clf.predict_proba(X_test)
+#     return y_pred, y_prob
+#
+# def random_forest_classifier(X_train, y_train, X_test):
+#     clf = RandomForestClassifier().fit(X_train, y_train)
+#     y_pred = clf.predict(X_test)
+#     y_prob = clf.predict_proba(X_test)
+#     return y_pred, y_prob
+#
+# def knn_classifier(X_train, y_train, X_test):
+#     clf = KNeighborsClassifier().fit(X_train, y_train)
+#     y_pred = clf.predict(X_test)
+#     y_prob = clf.predict_proba(X_test)
+#     return y_pred, y_prob
+#
+# # Ensemble methods
+# def ensemble_random(predictions):
+#     return [np.random.choice(pred) for pred in zip(*predictions)]
+#
+# def ensemble_highest_confidence(probs):
+#     return [np.argmax(max(prob, key=lambda p: max(p))) for prob in zip(*probs)]
+#
+# def ensemble_p1_p2_diff(probs):
+#     def diff(p):
+#         return np.max(p) - sorted(p)[-2]
+#     return [np.argmax(max(prob, key=diff)) for prob in zip(*probs)]
+#
+# def main():
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument('--train-files', nargs='+', required=True, help="Paths to training CSV files")
+#     parser.add_argument('--test-files', nargs='+', required=True, help="Paths to testing CSV files")
+#     parser.add_argument('--ensemble-method', choices=['random', 'highest_confidence', 'p1_p2_diff'], required=True, help="Ensemble method")
+#     args = parser.parse_args()
+#
+#     # Load and preprocess data
+#     X_train, y_train = preprocess_data(args.train_files)
+#     X_test, y_test = preprocess_data(args.test_files)
+#
+#     # Train and evaluate classifiers
+#     svm_pred, svm_prob = svm_classifier(X_train, y_train, X_test)
+#     rf_pred, rf_prob = random_forest_classifier(X_train, y_train, X_test)
+#     knn_pred, knn_prob = knn_classifier(X_train, y_train, X_test)
+#
+#     # Ensemble predictions
+#     if args.ensemble_method == 'random':
+#         final_pred = ensemble_random([svm_pred, rf_pred, knn_pred])
+#     elif args.ensemble_method == 'highest_confidence':
+#         final_pred = ensemble_highest_confidence([svm_prob, rf_prob, knn_prob])
+#     elif args.ensemble_method == 'p1_p2_diff':
+#         final_pred = ensemble_p1_p2_diff([svm_prob, rf_prob, knn_prob])
+#
+#     # Evaluate final predictions
+#     print("Classification Report:\n", classification_report(y_test, final_pred))
+#     print("Accuracy:", accuracy_score(y_test, final_pred))
+#
+# if __name__ == '__main__':
+#     main()
+
+
+import numpy as np
+import pandas as pd
+from sklearn.svm import SVC, OneClassSVM
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.neighbors import KNeighborsClassifier, LocalOutlierFactor
+from sklearn.covariance import EllipticEnvelope
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.metrics import classification_report, accuracy_score
+import argparse
+
+
+def preprocess_data(file_paths):
+    datasets = []
+    for file in file_paths:
+        df = pd.read_csv(file, index_col=0)
+
+        # Convert IAT dictionaries
+        for col in ['incoming_iat', 'outgoing_iat']:
+            if col in df.columns:
+                df[f'{col}_max'] = df[col].apply(lambda x: eval(x)['max_iat'])
+                df[f'{col}_mean'] = df[col].apply(lambda x: eval(x)['mean_iat'])
+                df[f'{col}_std'] = df[col].apply(lambda x: eval(x)['std_iat'])
+                df[f'{col}_q3'] = df[col].apply(lambda x: eval(x)['q3_iat'])
+                df = df.drop(columns=[col])
+
+        datasets.append(df)
+
+    combined_data = pd.concat(datasets, ignore_index=True)
+
+    # Convert labels to discrete classes
+    y_continuous = combined_data.iloc[:, -1]
+    y = pd.qcut(y_continuous, q=5, labels=['class_1', 'class_2', 'class_3', 'class_4', 'class_5'], duplicates='drop')
+    X = combined_data.iloc[:, :-1]
+
+    return X, y
+
+def scale_data(X_train, X_test, scaling_method):
+    if scaling_method == "standard":
+        scaler = StandardScaler()
+    elif scaling_method == "minmax":
+        scaler = MinMaxScaler()
+    else:
+        raise ValueError("Unsupported scaling method")
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+    return X_train_scaled, X_test_scaled
+
+def svm_multiclass(X_train, y_train, X_test):
+    clf = SVC(probability=True).fit(X_train, y_train)
+    y_pred = clf.predict(X_test)
+    y_prob = clf.predict_proba(X_test)
+    return y_pred, y_prob
+
+def svm_oneclass(X_train, X_test):
+    clf = OneClassSVM().fit(X_train)
+    y_pred = clf.predict(X_test)
+    y_prob = np.array([[1-abs(s), abs(s)] for s in clf.score_samples(X_test)])
+    return y_pred, y_prob
+
+def elliptic_envelope_oneclass(X_train, X_test):
+    clf = EllipticEnvelope(random_state=0, support_fraction=0.8).fit(X_train)
+    y_pred = clf.predict(X_test)
+    y_prob = np.array([[1-abs(s), abs(s)] for s in clf.score_samples(X_test)])
+    return y_pred, y_prob
+
+def local_outlier_factor_oneclass(X_train, X_test):
+    clf = LocalOutlierFactor(novelty=True).fit(X_train)
+    y_pred = clf.predict(X_test)
+    y_prob = np.array([[1-abs(s), abs(s)] for s in clf.score_samples(X_test)])
+    return y_pred, y_prob
+
+def random_forest_multiclass(X_train, y_train, X_test):
+    clf = RandomForestClassifier().fit(X_train, y_train)
+    y_pred = clf.predict(X_test)
+    y_prob = clf.predict_proba(X_test)
+    return y_pred, y_prob
+
+def knn_multiclass(X_train, y_train, X_test):
+    clf = KNeighborsClassifier().fit(X_train, y_train)
+    y_pred = clf.predict(X_test)
+    y_prob = clf.predict_proba(X_test)
+    return y_pred, y_prob
+
+def ensemble_random(probs):
+    return [np.random.choice(range(len(prob)), p=prob/sum(prob))
+            for prob in zip(*probs)]
+
+def ensemble_highest_confidence(probs):
+    final_predictions = []
+    for sample_probs in zip(*probs):
+        max_conf = max(max(p) for p in sample_probs)
+        for p in sample_probs:
+            if max_conf in p:
+                final_predictions.append(np.argmax(p))
+                break
+    return final_predictions
+
+def ensemble_p1p2_diff(probs):
+    final_predictions = []
+    for sample_probs in zip(*probs):
+        diffs = []
+        for prob in sample_probs:
+            sorted_probs = sorted(prob, reverse=True)
+            diffs.append(sorted_probs[0] - sorted_probs[1])
+        max_diff_idx = np.argmax(diffs)
+        final_predictions.append(np.argmax(sample_probs[max_diff_idx]))
+    return final_predictions
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--train-files", nargs="+", required=True, help="Training CSV files")
+    parser.add_argument("--test-files", nargs="+", required=True, help="Testing CSV files")
+    parser.add_argument("--svm-scaler", choices=["standard", "minmax"], required=True, help="Scaling method for SVM")
+    parser.add_argument("--rf-scaler", choices=["standard", "minmax"], required=True,
+                        help="Scaling method for Random Forest")
+    parser.add_argument("--knn-scaler", choices=["standard", "minmax"], required=True, help="Scaling method for KNN")
+    parser.add_argument("--ensemble-method", choices=["random", "highest_confidence", "p1p2_diff"], required=True)
+    args = parser.parse_args()
+
+    X_train, y_train = preprocess_data(args.train_files)
+    X_test, y_test = preprocess_data(args.test_files)
+
+    # X_train_scaled, X_test_scaled = {}, {}
+    # classifiers = ["svm", "rf", "knn"]
+    # for method, clf in zip(args.scaling_methods, classifiers):
+    #     X_train_scaled[clf], X_test_scaled[clf] = scale_data(X_train, X_test, method)
+    X_train_scaled, X_test_scaled = {}, {}
+    X_train_scaled["svm"], X_test_scaled["svm"] = scale_data(X_train, X_test, args.svm_scaler)
+    X_train_scaled["rf"], X_test_scaled["rf"] = scale_data(X_train, X_test, args.rf_scaler)
+    X_train_scaled["knn"], X_test_scaled["knn"] = scale_data(X_train, X_test, args.knn_scaler)
+
+    # One-class classifiers
+    print("\nOne-Class Classification Results:")
+    _, _ = svm_oneclass(X_train_scaled["svm"], X_test_scaled["svm"])
+    _, _ = elliptic_envelope_oneclass(X_train_scaled["svm"], X_test_scaled["svm"])
+    _, _ = local_outlier_factor_oneclass(X_train_scaled["svm"], X_test_scaled["svm"])
+
+    # Multi-class classifiers and ensemble
+    _, svm_prob = svm_multiclass(X_train_scaled["svm"], y_train, X_test_scaled["svm"])
+    _, rf_prob = random_forest_multiclass(X_train_scaled["rf"], y_train, X_test_scaled["rf"])
+    _, knn_prob = knn_multiclass(X_train_scaled["knn"], y_train, X_test_scaled["knn"])
+
+    ensemble_methods = {
+        "random": ensemble_random,
+        "highest_confidence": ensemble_highest_confidence,
+        "p1p2_diff": ensemble_p1p2_diff
+    }
+
+    print("\nMulti-Class Ensemble Results:")
+    final_pred = ensemble_methods[args.ensemble_method]([svm_prob, rf_prob, knn_prob])
+    print("Classification Report:\n", classification_report(y_test, final_pred))
+    print("Accuracy:", accuracy_score(y_test, final_pred))
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
