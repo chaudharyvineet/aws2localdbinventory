@@ -654,3 +654,290 @@ if __name__ == '__main__':
 #
 # if __name__ == '__main__':
 #     main()
+
+
+
+
+import boto3
+import json
+import random
+import os
+from botocore.exceptions import ClientError
+
+AMI_ID = ''        
+SECURITY_GROUP_ID = '' 
+IAM_ROLE = ''         
+VPC_ID = ''       
+KEY_NAME = '-arm'
+STORAGE_SIZE = 150
+
+# Define fallback configurations
+INSTANCE_TYPE_FALLBACKS = {
+    't4g.2xlarge': ['t4g.xlarge', 't4g.large'],
+    't3.2xlarge': ['t3.xlarge', 't3.large']
+}
+
+ec2_client = boto3.client('ec2')
+
+def parse_body(event):
+    if 'body' in event:
+        return json.loads(event['body'])
+    return {}
+
+def get_availability_zones():
+    response = ec2_client.describe_availability_zones(
+        Filters=[{'Name': 'region-name', 'Values': [ec2_client.meta.region_name]}]
+    )
+    return [az['ZoneName'] for az in response['AvailabilityZones']]
+
+def get_subnet_for_az(az):
+    subnets = ec2_client.describe_subnets(
+        Filters=[
+            {'Name': 'vpc-id', 'Values': [VPC_ID]},
+            {'Name': 'availability-zone', 'Values': [az]}
+        ]
+    )['Subnets']
+    return random.choice(subnets)['SubnetId'] if subnets else None
+
+def lambda_handler(event, context):
+    token = event['headers'].get('Authorization')
+    secret = os.environ.get('header')
+    
+    if not (token and token == secret):
+        return {
+            'statusCode': 401,
+            'body': json.dumps('401 Unauthorized')
+        }
+    
+    try:
+        body = parse_body(event)
+        
+        if event['resource'] == '/provision-machine':
+            print('create ec2 api was called...')
+            
+            arch = body.get('arch')
+            if arch == "graviton":
+                instance_type = body.get('instance_type', 't4g.2xlarge')
+                AMI_ID = "ami-xxx"
+            else:
+                instance_type = body.get('instance_type', 't3.2xlarge')
+                AMI_ID = "ami-xxxx"
+
+            is_spot = body.get('spot', True)  # Default to spot instance
+            
+            # Get the first AZ's subnet to start with
+            availability_zones = get_availability_zones()
+            subnet_id = get_subnet_for_az(availability_zones[0])
+            
+            if is_spot:
+                launch_spec = {
+                    'ImageId': AMI_ID,
+                    'InstanceType': instance_type,
+                    'KeyName': KEY_NAME,
+                    'SecurityGroupIds': [SECURITY_GROUP_ID],
+                    'IamInstanceProfile': {'Name': IAM_ROLE},
+                    'SubnetId': subnet_id
+                }
+                
+                # Create the Spot Instance request
+                spot_response = ec2_client.request_spot_instances(
+                    InstanceCount=1,
+                    Type='one-time',
+                    LaunchSpecification=launch_spec
+                )
+                
+                request_id = spot_response['SpotInstanceRequests'][0]['SpotInstanceRequestId']
+                return {
+                    'statusCode': 202,
+                    'body': json.dumps({
+                        'RequestId': request_id,
+                        'Status': 'pending',
+                        'InitialInstanceType': instance_type,
+                        'IsSpot': True
+                    })
+                }
+            else:
+                # For on-demand, try immediate launch
+                instance_params = {
+                    'ImageId': AMI_ID,
+                    'InstanceType': instance_type,
+                    'KeyName': KEY_NAME,
+                    'SecurityGroupIds': [SECURITY_GROUP_ID],
+                    'SubnetId': subnet_id,
+                    'MaxCount': 1,
+                    'MinCount': 1,
+                    'IamInstanceProfile': {'Name': IAM_ROLE}
+                }
+                
+                try:
+                    response = ec2_client.run_instances(**instance_params)
+                    instance = response['Instances'][0]
+                    return {
+                        'statusCode': 202,
+                        'body': json.dumps({
+                            'InstanceId': instance['InstanceId'],
+                            'Status': 'pending',
+                            'IsSpot': False
+                        })
+                    }
+                except ClientError as e:
+                    if e.response['Error']['Code'] in ['InsufficientInstanceCapacity', 'InsufficientHostCapacity']:
+                        # If immediate launch fails, fall back to spot request
+                        spot_response = ec2_client.request_spot_instances(
+                            InstanceCount=1,
+                            Type='one-time',
+                            LaunchSpecification=launch_spec
+                        )
+                        request_id = spot_response['SpotInstanceRequests'][0]['SpotInstanceRequestId']
+                        return {
+                            'statusCode': 202,
+                            'body': json.dumps({
+                                'RequestId': request_id,
+                                'Status': 'pending',
+                                'InitialInstanceType': instance_type,
+                                'IsSpot': True,
+                                'FallbackFromOnDemand': True
+                            })
+                        }
+                    raise
+
+        elif event['resource'] == '/checkstatus':
+            print('check status api was called...')
+            
+            body = parse_body(event)
+            request_id = body.get('request_id')
+            
+            spot_result = ec2_client.describe_spot_instance_requests(SpotInstanceRequestIds=[request_id])
+            spot_request = spot_result['SpotInstanceRequests'][0]
+            
+            if spot_request['State'] == 'failed':
+                # If the current attempt failed, try with next instance type or AZ
+                original_error = spot_request.get('Status', {}).get('Message', '')
+                
+                # Get the current instance type from the launch specification
+                current_type = spot_request['LaunchSpecification']['InstanceType']
+                current_az = spot_request['LaunchSpecification']['SubnetId']
+                
+                # Try to find next configuration
+                fallback_types = INSTANCE_TYPE_FALLBACKS.get(current_type, [])
+                availability_zones = get_availability_zones()
+                
+                # Try next AZ first
+                current_az_index = next((i for i, az in enumerate(availability_zones) 
+                                      if get_subnet_for_az(az) == current_az), -1)
+                if current_az_index < len(availability_zones) - 1:
+                    # Try next AZ with same instance type
+                    next_az = availability_zones[current_az_index + 1]
+                    next_subnet = get_subnet_for_az(next_az)
+                elif fallback_types:
+                    # Try first AZ with next instance type
+                    current_type = fallback_types[0]
+                    next_az = availability_zones[0]
+                    next_subnet = get_subnet_for_az(next_az)
+                else:
+                    return {
+                        'statusCode': 400,
+                        'body': json.dumps({
+                            'RequestId': request_id,
+                            'Status': 'failed',
+                            'Error': 'No more configurations to try',
+                            'LastError': original_error
+                        })
+                    }
+                
+                # Cancel the failed request
+                ec2_client.cancel_spot_instance_requests(SpotInstanceRequestIds=[request_id])
+                
+                # Create new request with next configuration
+                launch_spec = spot_request['LaunchSpecification']
+                launch_spec.update({
+                    'InstanceType': current_type,
+                    'SubnetId': next_subnet
+                })
+                
+                new_spot_response = ec2_client.request_spot_instances(
+                    InstanceCount=1,
+                    Type='one-time',
+                    LaunchSpecification=launch_spec
+                )
+                
+                new_request_id = new_spot_response['SpotInstanceRequests'][0]['SpotInstanceRequestId']
+                return {
+                    'statusCode': 200,
+                    'body': json.dumps({
+                        'RequestId': new_request_id,
+                        'Status': 'pending',
+                        'PreviousRequestId': request_id,
+                        'CurrentInstanceType': current_type,
+                        'CurrentAZ': next_az
+                    })
+                }
+            
+            elif 'InstanceId' in spot_request:
+                instance_id = spot_request['InstanceId']
+                
+                # Check the instance status
+                instance_details = ec2_client.describe_instances(InstanceIds=[instance_id])
+                instance = instance_details['Reservations'][0]['Instances'][0]
+                instance_state = instance['State']['Name']
+                public_ip = instance.get('PublicIpAddress', 'No public IP')
+                
+                return {
+                    'statusCode': 200,
+                    'body': json.dumps({
+                        'RequestId': request_id,
+                        'Status': instance_state,
+                        'InstanceId': instance_id,
+                        'PublicIpAddress': public_ip,
+                        'InstanceType': instance['InstanceType'],
+                        'AvailabilityZone': instance['Placement']['AvailabilityZone']
+                    })
+                }
+            else:
+                return {
+                    'statusCode': 200,
+                    'body': json.dumps({
+                        'RequestId': request_id,
+                        'Status': 'pending'
+                    })
+                }
+
+        elif event['resource'] == '/delete-machine':
+            print('delete ec2 api was called...')
+            
+            body = parse_body(event)
+            request_id = body.get('request_id')
+            instance_id = body.get('instance_id')
+
+            if request_id:
+                try:
+                    spot_result = ec2_client.describe_spot_instance_requests(SpotInstanceRequestIds=[request_id])
+                    spot_request = spot_result['SpotInstanceRequests'][0]
+                    instance_id = spot_request.get('InstanceId')
+                    ec2_client.cancel_spot_instance_requests(SpotInstanceRequestIds=[request_id])
+                except ClientError:
+                    pass
+
+            if instance_id:
+                ec2_client.terminate_instances(InstanceIds=[instance_id])
+                return {
+                    'statusCode': 202,
+                    'body': json.dumps({
+                        'InstanceId': instance_id,
+                        'RequestId': request_id,
+                        'Status': 'terminating'
+                    })
+                }
+            else:
+                return {
+                    'statusCode': 400,
+                    'body': json.dumps({
+                        'error': 'No instance ID found'
+                    })
+                }
+
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': str(e)})
+        }
