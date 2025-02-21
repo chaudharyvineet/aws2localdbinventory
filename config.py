@@ -14,35 +14,64 @@ def get_resource_inventory(region: str) -> List[Dict[Any, Any]]:
     config_client = boto3.client('config', region_name=region)
     resources = []
     
-    paginator = config_client.get_paginator('list_aggregate_discovered_resources')
-    
+    # Get list of supported resource types
     try:
-        # Get both active and deleted resources
-        for response in paginator.paginate():
-            for resource in response['ResourceIdentifiers']:
-                resource_detail = config_client.get_resource_config_history(
-                    resourceType=resource['resourceType'],
-                    resourceId=resource['resourceId']
-                )
-                
-                for config_item in resource_detail['configurationItems']:
-                    resources.append({
-                        'resourceType': config_item['resourceType'],
-                        'resourceId': config_item['resourceId'],
-                        'resourceName': config_item.get('resourceName', 'N/A'),
-                        'region': region,
-                        'accountId': config_item['accountId'],
-                        'configurationItemStatus': config_item['configurationItemStatus'],
-                        'resourceCreationTime': config_item.get('resourceCreationTime', 'N/A'),
-                        'configurationItemCaptureTime': config_item['configurationItemCaptureTime'],
-                        'awsRegion': config_item['awsRegion'],
-                        'resourceCreator': config_item.get('configuration', {}).get('creator', 'N/A'),
-                        'lastModifiedBy': config_item.get('configuration', {}).get('lastModifiedBy', 'N/A'),
-                        'tags': config_item.get('tags', {}),
-                        'relatedEvents': config_item.get('relatedEvents', [])
-                    })
+        resource_types = config_client.get_discovered_resource_counts()['resourceCounts']
+        resource_types = [item['resourceType'] for item in resource_types]
     except Exception as e:
-        print(f"Error processing region {region}: {str(e)}")
+        print(f"Error getting resource types: {str(e)}")
+        resource_types = []
+    
+    for resource_type in resource_types:
+        try:
+            paginator = config_client.get_paginator('list_discovered_resources')
+            
+            # List resources of this type
+            for page in paginator.paginate(resourceType=resource_type):
+                for resource in page['resourceIdentifiers']:
+                    try:
+                        # Get detailed history for each resource
+                        history = config_client.get_resource_config_history(
+                            resourceType=resource['resourceType'],
+                            resourceId=resource['resourceId']
+                        )
+                        
+                        for config_item in history['configurationItems']:
+                            # Extract creator/deleter information from CloudTrail events if available
+                            creator_info = "N/A"
+                            deleter_info = "N/A"
+                            
+                            if 'relatedEvents' in config_item:
+                                for event in config_item['relatedEvents']:
+                                    if 'CreateResource' in event:
+                                        creator_info = config_item.get('configuration', {}).get('userIdentity', {}).get('arn', 'N/A')
+                                    elif 'DeleteResource' in event:
+                                        deleter_info = config_item.get('configuration', {}).get('userIdentity', {}).get('arn', 'N/A')
+                            
+                            resources.append({
+                                'resourceType': config_item['resourceType'],
+                                'resourceId': config_item['resourceId'],
+                                'resourceName': config_item.get('resourceName', 'N/A'),
+                                'region': region,
+                                'accountId': config_item['accountId'],
+                                'configurationItemStatus': config_item['configurationItemStatus'],
+                                'resourceCreationTime': config_item.get('resourceCreationTime', 'N/A'),
+                                'configurationItemCaptureTime': config_item['configurationItemCaptureTime'],
+                                'awsRegion': config_item['awsRegion'],
+                                'creator': creator_info,
+                                'deleter': deleter_info,
+                                'tags': config_item.get('tags', {}),
+                                'relatedEvents': config_item.get('relatedEvents', [])
+                            })
+                    except config_client.exceptions.ResourceNotRecordedException:
+                        continue
+                    except Exception as e:
+                        print(f"Error processing resource {resource['resourceId']}: {str(e)}")
+                        continue
+                        
+        except Exception as e:
+            print(f"Error processing resource type {resource_type}: {str(e)}")
+            continue
     
     return resources
 
@@ -81,7 +110,7 @@ def generate_html_report(resources: List[Dict[Any, Any]], output_file: str = 're
                 <th>Creation Time</th>
                 <th>Last Modified</th>
                 <th>Creator</th>
-                <th>Last Modified By</th>
+                <th>Deleter</th>
                 <th>Tags</th>
             </tr>
     """
@@ -97,8 +126,8 @@ def generate_html_report(resources: List[Dict[Any, Any]], output_file: str = 're
                 <td>{resource['configurationItemStatus']}</td>
                 <td>{resource['resourceCreationTime']}</td>
                 <td>{resource['configurationItemCaptureTime']}</td>
-                <td>{resource['resourceCreator']}</td>
-                <td>{resource['lastModifiedBy']}</td>
+                <td>{resource['creator']}</td>
+                <td>{resource['deleter']}</td>
                 <td>{json.dumps(resource['tags'], indent=2)}</td>
             </tr>
         """
