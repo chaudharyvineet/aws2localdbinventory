@@ -34,20 +34,25 @@ class ConanRef(NamedTuple):
         """Parse a conan reference string with various formats"""
         ref_str = ref_str.strip()
         
-        # Handle different Conan reference formats
-        # Version pattern allows: digits, letters, dots, dashes, underscores, wildcards
-        version_pattern = r'[\w\.\-\*\+]+'
-        channel_pattern = r'[\w\.\-\+]*'  # Channel can be empty or contain similar chars
+        # More comprehensive version pattern that handles all your cases
+        # Allows: digits, letters, dots, dashes, underscores, plus signs
+        version_pattern = r'[\w\.\-\+]+'
+        # Package name can contain underscores and dashes
+        package_pattern = r'[\w\-\_]+'
+        # Channel pattern - more permissive for beta versions with dots
+        channel_pattern = r'[\w\.\-\+]*'
+        # User pattern
+        user_pattern = r'[\w\.\-\+\_]+'
         
         patterns = [
             # Standard format: package/version@user/channel
-            rf'^([^/]+)/({version_pattern})@([^/]+)/({channel_pattern})$',
+            rf'^({package_pattern})/({version_pattern})@({user_pattern})/({channel_pattern})$',
             # Missing channel with trailing slash: package/version@user/
-            rf'^([^/]+)/({version_pattern})@([^/]+)/$',
+            rf'^({package_pattern})/({version_pattern})@({user_pattern})/$',
             # Missing channel entirely: package/version@user
-            rf'^([^/]+)/({version_pattern})@([^/]+)$',
+            rf'^({package_pattern})/({version_pattern})@({user_pattern})$',
             # Just package/version (no user/channel)
-            rf'^([^/]+)/({version_pattern})$'
+            rf'^({package_pattern})/({version_pattern})$'
         ]
         
         for i, pattern in enumerate(patterns):
@@ -77,7 +82,6 @@ class ConanRef(NamedTuple):
     def matches_pattern(self, pattern: str) -> bool:
         """Check if this reference matches a search pattern like 'lib_b*'"""
         return self.name.startswith(pattern.rstrip('*'))
-
 
 
 @dataclass
@@ -129,15 +133,21 @@ class ConanfileParser:
                     if isinstance(node.value, (ast.Str, ast.Constant)):
                         # Single requirement
                         req_str = node.value.s if hasattr(node.value, 's') else node.value.value
-                        req = Requirement(ref=ConanRef.parse(req_str))
-                        requirements.append(req)
+                        try:
+                            req = Requirement(ref=ConanRef.parse(req_str))
+                            requirements.append(req)
+                        except ValueError as e:
+                            logger.warning(f"Failed to parse requirement '{req_str}': {e}")
                     elif isinstance(node.value, (ast.List, ast.Tuple)):
                         # Multiple requirements
                         for elt in node.value.elts:
                             if isinstance(elt, (ast.Str, ast.Constant)):
                                 req_str = elt.s if hasattr(elt, 's') else elt.value
-                                req = Requirement(ref=ConanRef.parse(req_str))
-                                requirements.append(req)
+                                try:
+                                    req = Requirement(ref=ConanRef.parse(req_str))
+                                    requirements.append(req)
+                                except ValueError as e:
+                                    logger.warning(f"Failed to parse requirement '{req_str}': {e}")
                 
                 # Extract package name and version if available
                 if isinstance(node.targets[0], ast.Name):
@@ -227,54 +237,86 @@ class ConanfileParser:
 class ConanRemoteClient:
     """Client for interacting with Conan remotes"""
     
-    def __init__(self, remote_name: str = "conancenter"):
-        self.remote_name = remote_name
+    def __init__(self, remotes: List[str] = None):
+        """
+        Initialize with multiple remotes
+        Args:
+            remotes: List of remote names, defaults to ["conancenter"]
+        """
+        self.remotes = remotes or ["conancenter"]
+        logger.info(f"Initialized with remotes: {self.remotes}")
     
     def search_packages(self, pattern: str) -> List[ConanRef]:
-        """Search for packages matching a pattern"""
-        try:
-            cmd = ["conan", "search", pattern, "-r", self.remote_name]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            
-            packages = []
-            for line in result.stdout.split('\n'):
-                line = line.strip()
-                if line and '@' in line and '/' in line:
-                    try:
-                        packages.append(ConanRef.parse(line))
-                    except ValueError:
-                        continue
-            
-            return packages
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to search packages: {e}")
-            return []
+        """Search for packages matching a pattern across all remotes"""
+        all_packages = []
+        
+        for remote in self.remotes:
+            try:
+                cmd = ["conan", "search", pattern, "-r", remote]
+                result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                
+                packages = []
+                for line in result.stdout.split('\n'):
+                    line = line.strip()
+                    if line and '@' in line and '/' in line:
+                        try:
+                            packages.append(ConanRef.parse(line))
+                        except ValueError as e:
+                            logger.warning(f"Failed to parse reference '{line}': {e}")
+                            continue
+                
+                all_packages.extend(packages)
+                logger.info(f"Found {len(packages)} packages in remote '{remote}'")
+                
+            except subprocess.CalledProcessError as e:
+                logger.warning(f"Failed to search packages in remote '{remote}': {e}")
+                continue
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_packages = []
+        for pkg in all_packages:
+            pkg_key = str(pkg)
+            if pkg_key not in seen:
+                seen.add(pkg_key)
+                unique_packages.append(pkg)
+        
+        return unique_packages
     
     def get_package_info(self, ref: ConanRef) -> Optional[PackageInfo]:
-        """Get detailed information about a package"""
-        try:
-            cmd = ["conan", "inspect", str(ref), "-r", self.remote_name]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            
-            # Parse the output to extract dependencies
-            dependencies = []
-            for line in result.stdout.split('\n'):
-                if 'requires:' in line:
-                    # Extract requirements from the output
-                    req_match = re.search(r'([^/]+/[^@]+@[^/]+/[^\s]+)', line)
-                    if req_match:
-                        try:
-                            dependencies.append(ConanRef.parse(req_match.group(1)))
-                        except ValueError:
-                            continue
-            
-            return PackageInfo(ref=ref, dependencies=dependencies)
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to get package info for {ref}: {e}")
-            return None
+        """Get detailed information about a package from any available remote"""
+        for remote in self.remotes:
+            try:
+                cmd = ["conan", "inspect", str(ref), "-r", remote]
+                result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                
+                # Parse the output to extract dependencies
+                requirements = []
+                for line in result.stdout.split('\n'):
+                    if 'requires:' in line or 'requirements:' in line:
+                        # Extract requirements from the output
+                        # Look for patterns like: package/version@user/channel
+                        req_matches = re.findall(r'([^/\s]+/[^@\s]+@[^/\s]+(?:/[^\s,]*)?)', line)
+                        for req_match in req_matches:
+                            try:
+                                dep_ref = ConanRef.parse(req_match)
+                                requirements.append(Requirement(ref=dep_ref))
+                            except ValueError as e:
+                                logger.warning(f"Failed to parse dependency '{req_match}': {e}")
+                                continue
+                
+                logger.info(f"Successfully got package info for {ref} from remote '{remote}'")
+                return PackageInfo(ref=ref, requirements=requirements)
+                
+            except subprocess.CalledProcessError as e:
+                logger.warning(f"Failed to get package info for {ref} from remote '{remote}': {e}")
+                continue
+        
+        logger.error(f"Failed to get package info for {ref} from any remote")
+        return None
     
     def get_available_versions(self, package_name: str) -> List[str]:
-        """Get all available versions for a package"""
+        """Get all available versions for a package across all remotes"""
         packages = self.search_packages(f"{package_name}*")
         versions = []
         for pkg in packages:
@@ -282,14 +324,30 @@ class ConanRemoteClient:
                 versions.append(pkg.version)
         return sorted(set(versions), key=lambda v: self._version_key(v))
     
+    def test_remote_connectivity(self) -> Dict[str, bool]:
+        """Test connectivity to all configured remotes"""
+        results = {}
+        for remote in self.remotes:
+            try:
+                cmd = ["conan", "remote", "list"]
+                result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                # Check if remote exists in the output
+                results[remote] = remote in result.stdout
+            except subprocess.CalledProcessError:
+                results[remote] = False
+        
+        return results
+    
     @staticmethod
     def _version_key(version: str) -> Tuple:
         """Convert version string to tuple for sorting"""
         parts = []
         for part in version.split('.'):
+            # Try to convert to int, fallback to string for sorting
             try:
                 parts.append(int(part))
             except ValueError:
+                # Handle non-numeric parts like 'beta4', 'rc1', etc.
                 parts.append(part)
         return tuple(parts)
 
@@ -675,11 +733,18 @@ class DependencySolver:
 
 
 def main():
-    """Example usage of the dependency solver"""
+    """Example usage of the dependency solver with multiple remotes"""
     
-    # Create the solver
-    remote_client = ConanRemoteClient("conancenter")
+    # Create the solver with multiple remotes
+    remotes = ["conancenter", "mycompany", "artifactory", "local"]
+    remote_client = ConanRemoteClient(remotes)
     solver = DependencySolver(remote_client)
+    
+    # Test remote connectivity
+    connectivity = remote_client.test_remote_connectivity()
+    print("Remote connectivity status:")
+    for remote, status in connectivity.items():
+        print(f"  {remote}: {'✓' if status else '✗'}")
     
     # Example conanfile path
     conanfile_path = "conanfile.py"
@@ -698,6 +763,8 @@ class MainPackage(ConanFile):
         self.requires("lib_d/3.0@user/stable", force=True)
         self.requires("lib_f/2.5@user/stable", force=True)
         self.requires("lib_x/1.4@user/stable")
+        self.requires("pack_age_this/0.5.4@something/beta4")
+        self.requires("pack_age_this/0.5.4-6@something/beta4")
     
     def build(self):
         pass
