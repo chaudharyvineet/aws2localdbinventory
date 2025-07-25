@@ -31,19 +31,53 @@ class ConanRef(NamedTuple):
     
     @classmethod
     def parse(cls, ref_str: str) -> 'ConanRef':
-        """Parse a conan reference string like 'lib_b/3.0@user/stable'"""
-        pattern = r'^([^/]+)/([^@]+)@([^/]+)/(.+)$'
-        match = re.match(pattern, ref_str.strip())
-        if not match:
-            raise ValueError(f"Invalid conan reference format: {ref_str}")
-        return cls(match.group(1), match.group(2), match.group(3), match.group(4))
+        """Parse a conan reference string with various formats"""
+        ref_str = ref_str.strip()
+        
+        # Handle different Conan reference formats
+        # Version pattern allows: digits, letters, dots, dashes, underscores, wildcards
+        version_pattern = r'[\w\.\-\*\+]+'
+        channel_pattern = r'[\w\.\-\+]*'  # Channel can be empty or contain similar chars
+        
+        patterns = [
+            # Standard format: package/version@user/channel
+            rf'^([^/]+)/({version_pattern})@([^/]+)/({channel_pattern})$',
+            # Missing channel with trailing slash: package/version@user/
+            rf'^([^/]+)/({version_pattern})@([^/]+)/$',
+            # Missing channel entirely: package/version@user
+            rf'^([^/]+)/({version_pattern})@([^/]+)$',
+            # Just package/version (no user/channel)
+            rf'^([^/]+)/({version_pattern})$'
+        ]
+        
+        for i, pattern in enumerate(patterns):
+            match = re.match(pattern, ref_str)
+            if match:
+                groups = match.groups()
+                
+                if i == 0:  # Standard format
+                    return cls(groups[0], groups[1], groups[2], groups[3])
+                elif i == 1:  # Missing channel with trailing slash
+                    return cls(groups[0], groups[1], groups[2], "")
+                elif i == 2:  # Missing channel entirely
+                    return cls(groups[0], groups[1], groups[2], "")
+                elif i == 3:  # Just package/version
+                    return cls(groups[0], groups[1], "", "")
+        
+        raise ValueError(f"Invalid conan reference format: {ref_str}")
     
     def __str__(self) -> str:
-        return f"{self.name}/{self.version}@{self.user}/{self.channel}"
+        if self.user and self.channel:
+            return f"{self.name}/{self.version}@{self.user}/{self.channel}"
+        elif self.user:
+            return f"{self.name}/{self.version}@{self.user}"
+        else:
+            return f"{self.name}/{self.version}"
     
     def matches_pattern(self, pattern: str) -> bool:
         """Check if this reference matches a search pattern like 'lib_b*'"""
         return self.name.startswith(pattern.rstrip('*'))
+
 
 
 @dataclass
