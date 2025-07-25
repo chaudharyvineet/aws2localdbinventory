@@ -283,37 +283,62 @@ class ConanRemoteClient:
         
         return unique_packages
     
-    def get_package_info(self, ref: ConanRef) -> Optional[PackageInfo]:
-        """Get detailed information about a package from any available remote"""
-        for remote in self.remotes:
+def get_package_info(self, ref: ConanRef) -> Optional[PackageInfo]:
+    """Get detailed information about a package from any available remote"""
+    for remote in self.remotes:
+        try:
+            # Use conan list to check if package exists
+            cmd = ["conan", "list", str(ref), "-r", remote]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            
+            if str(ref) not in result.stdout:
+                continue  # Package not found in this remote
+            
+            # Use conan graph info to get dependencies
+            # Create a temporary conanfile that requires this package
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as tmp:
+                tmp.write(f'''
+from conan import ConanFile
+
+class TempConan(ConanFile):
+    def requirements(self):
+        self.requires("{ref}")
+''')
+                tmp_path = tmp.name
+            
             try:
-                cmd = ["conan", "inspect", str(ref), "-r", remote]
+                cmd = ["conan", "graph", "info", tmp_path, "-r", remote, "--format=json"]
                 result = subprocess.run(cmd, capture_output=True, text=True, check=True)
                 
-                # Parse the output to extract dependencies
+                # Parse JSON output to extract dependencies
+                import json
+                graph_data = json.loads(result.stdout)
                 requirements = []
-                for line in result.stdout.split('\n'):
-                    if 'requires:' in line or 'requirements:' in line:
-                        # Extract requirements from the output
-                        # Look for patterns like: package/version@user/channel
-                        req_matches = re.findall(r'([^/\s]+/[^@\s]+@[^/\s]+(?:/[^\s,]*)?)', line)
-                        for req_match in req_matches:
+                
+                # Extract requirements from graph data
+                for node in graph_data.get("graph", {}).get("nodes", {}).values():
+                    if node.get("ref") == str(ref):
+                        for req in node.get("dependencies", []):
                             try:
-                                dep_ref = ConanRef.parse(req_match)
+                                dep_ref = ConanRef.parse(req)
                                 requirements.append(Requirement(ref=dep_ref))
                             except ValueError as e:
-                                logger.warning(f"Failed to parse dependency '{req_match}': {e}")
-                                continue
+                                logger.warning(f"Failed to parse dependency '{req}': {e}")
                 
                 logger.info(f"Successfully got package info for {ref} from remote '{remote}'")
                 return PackageInfo(ref=ref, requirements=requirements)
                 
-            except subprocess.CalledProcessError as e:
-                logger.warning(f"Failed to get package info for {ref} from remote '{remote}': {e}")
-                continue
-        
-        logger.error(f"Failed to get package info for {ref} from any remote")
-        return None
+            finally:
+                os.unlink(tmp_path)
+                
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Failed to get package info for {ref} from remote '{remote}': {e}")
+            continue
+    
+    logger.error(f"Failed to get package info for {ref} from any remote")
+    return None
+
     
     def get_available_versions(self, package_name: str) -> List[str]:
         """Get all available versions for a package across all remotes"""
