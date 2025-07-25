@@ -283,25 +283,91 @@ class ConanRemoteClient:
         
         return unique_packages
     
-def get_package_info(self, ref: ConanRef) -> Optional[PackageInfo]:
+# def get_package_info(self, ref: ConanRef) -> Optional[PackageInfo]:
+#     """Get detailed information about a package using conan graph explain"""
+#     for remote in self.remotes:
+#         try:
+#             # Use conan graph explain to get package dependencies
+#             cmd = ["conan", "graph", "explain", f"--requires={ref}", "-r", remote, "--format=json"]
+#             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            
+#             # Parse JSON output
+#             import json
+#             data = json.loads(result.stdout)
+            
+#             requirements = []
+#             # The structure depends on the actual JSON output from conan graph explain
+#             # You might need to adjust this based on actual output
+#             if "graph" in data:
+#                 for node_id, node in data["graph"].get("nodes", {}).items():
+#                     node_ref = node.get("ref", "")
+#                     if node_ref and node_ref != str(ref):  # Don't include self
+#                         try:
+#                             dep_ref = ConanRef.parse(node_ref)
+#                             requirements.append(Requirement(ref=dep_ref))
+#                         except ValueError as e:
+#                             logger.warning(f"Failed to parse dependency '{node_ref}': {e}")
+            
+#             logger.info(f"Successfully got package info for {ref} from remote '{remote}'")
+#             return PackageInfo(ref=ref, requirements=requirements)
+            
+#         except subprocess.CalledProcessError as e:
+#             logger.warning(f"Failed to get package info for {ref} from remote '{remote}': {e}")
+#             continue
+    
+#     logger.error(f"Failed to get package info for {ref} from any remote")
+#     return None
+    def get_package_info(self, ref: ConanRef) -> Optional[PackageInfo]:
     """Get detailed information about a package using conan graph explain"""
+    import shutil
+    import json
+    
+    # Get the full path to conan
+    conan_path = shutil.which("conan")
+    if not conan_path:
+        logger.error("Conan executable not found in PATH")
+        return None
+    
     for remote in self.remotes:
         try:
-            # Use conan graph explain to get package dependencies
-            cmd = ["conan", "graph", "explain", f"--requires={ref}", "-r", remote, "--format=json"]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            cmd = [conan_path, "graph", "explain", f"--requires={ref}", "-r", remote, "--format=json"]
             
-            # Parse JSON output
-            import json
-            data = json.loads(result.stdout)
+            # Get current environment
+            env = os.environ.copy()
+            
+            logger.info(f"Executing: {' '.join(cmd)}")
+            result = subprocess.run(
+                cmd, 
+                capture_output=True, 
+                text=True, 
+                check=True,
+                env=env,
+                timeout=60
+            )
+            
+            # Check if we have valid output before parsing JSON
+            if not result.stdout or result.stdout.strip() == "":
+                logger.warning(f"Empty output from conan command for {ref} on remote '{remote}'")
+                continue
+            
+            try:
+                # Parse JSON output
+                data = json.loads(result.stdout)
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse JSON output for {ref} on remote '{remote}': {e}")
+                logger.warning(f"Raw output: {result.stdout[:200]}...")
+                continue
+            
+            # Check if data is valid
+            if not data or not isinstance(data, dict):
+                logger.warning(f"Invalid JSON data structure for {ref} on remote '{remote}'")
+                continue
             
             requirements = []
-            # The structure depends on the actual JSON output from conan graph explain
-            # You might need to adjust this based on actual output
-            if "graph" in data:
-                for node_id, node in data["graph"].get("nodes", {}).items():
+            if "graph" in data and "nodes" in data["graph"]:
+                for node_id, node in data["graph"]["nodes"].items():
                     node_ref = node.get("ref", "")
-                    if node_ref and node_ref != str(ref):  # Don't include self
+                    if node_ref and node_ref != str(ref) and "conanfile" not in node_ref.lower():
                         try:
                             dep_ref = ConanRef.parse(node_ref)
                             requirements.append(Requirement(ref=dep_ref))
@@ -312,11 +378,21 @@ def get_package_info(self, ref: ConanRef) -> Optional[PackageInfo]:
             return PackageInfo(ref=ref, requirements=requirements)
             
         except subprocess.CalledProcessError as e:
-            logger.warning(f"Failed to get package info for {ref} from remote '{remote}': {e}")
+            logger.warning(f"Command failed for {ref} on remote '{remote}'")
+            logger.warning(f"Return code: {e.returncode}")
+            logger.warning(f"stdout: {e.stdout}")
+            logger.warning(f"stderr: {e.stderr}")
+            continue
+        except subprocess.TimeoutExpired:
+            logger.warning(f"Command timed out for {ref} on remote '{remote}'")
+            continue
+        except Exception as e:
+            logger.warning(f"Unexpected error for {ref} on remote '{remote}': {e}")
             continue
     
     logger.error(f"Failed to get package info for {ref} from any remote")
     return None
+
 
 
     
