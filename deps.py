@@ -284,60 +284,40 @@ class ConanRemoteClient:
         return unique_packages
     
 def get_package_info(self, ref: ConanRef) -> Optional[PackageInfo]:
-    """Get detailed information about a package from any available remote"""
+    """Get detailed information about a package using conan graph explain"""
     for remote in self.remotes:
         try:
-            # Use conan list to check if package exists
-            cmd = ["conan", "list", str(ref), "-r", remote]
+            # Use conan graph explain to get package dependencies
+            cmd = ["conan", "graph", "explain", f"--requires={ref}", "-r", remote, "--format=json"]
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             
-            if str(ref) not in result.stdout:
-                continue  # Package not found in this remote
+            # Parse JSON output
+            import json
+            data = json.loads(result.stdout)
             
-            # Use conan graph info to get dependencies
-            # Create a temporary conanfile that requires this package
-            import tempfile
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as tmp:
-                tmp.write(f'''
-from conan import ConanFile
-
-class TempConan(ConanFile):
-    def requirements(self):
-        self.requires("{ref}")
-''')
-                tmp_path = tmp.name
+            requirements = []
+            # The structure depends on the actual JSON output from conan graph explain
+            # You might need to adjust this based on actual output
+            if "graph" in data:
+                for node_id, node in data["graph"].get("nodes", {}).items():
+                    node_ref = node.get("ref", "")
+                    if node_ref and node_ref != str(ref):  # Don't include self
+                        try:
+                            dep_ref = ConanRef.parse(node_ref)
+                            requirements.append(Requirement(ref=dep_ref))
+                        except ValueError as e:
+                            logger.warning(f"Failed to parse dependency '{node_ref}': {e}")
             
-            try:
-                cmd = ["conan", "graph", "info", tmp_path, "-r", remote, "--format=json"]
-                result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-                
-                # Parse JSON output to extract dependencies
-                import json
-                graph_data = json.loads(result.stdout)
-                requirements = []
-                
-                # Extract requirements from graph data
-                for node in graph_data.get("graph", {}).get("nodes", {}).values():
-                    if node.get("ref") == str(ref):
-                        for req in node.get("dependencies", []):
-                            try:
-                                dep_ref = ConanRef.parse(req)
-                                requirements.append(Requirement(ref=dep_ref))
-                            except ValueError as e:
-                                logger.warning(f"Failed to parse dependency '{req}': {e}")
-                
-                logger.info(f"Successfully got package info for {ref} from remote '{remote}'")
-                return PackageInfo(ref=ref, requirements=requirements)
-                
-            finally:
-                os.unlink(tmp_path)
-                
+            logger.info(f"Successfully got package info for {ref} from remote '{remote}'")
+            return PackageInfo(ref=ref, requirements=requirements)
+            
         except subprocess.CalledProcessError as e:
             logger.warning(f"Failed to get package info for {ref} from remote '{remote}': {e}")
             continue
     
     logger.error(f"Failed to get package info for {ref} from any remote")
     return None
+
 
     
     def get_available_versions(self, package_name: str) -> List[str]:
